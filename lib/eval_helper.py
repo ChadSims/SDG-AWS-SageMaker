@@ -259,7 +259,7 @@ def compute_MDS(real_data, m_shadow_models, n_syn_dataset, model_name, cat_featu
 def evaluate_privacy(real_data, model_params, m_shadow_models, n_syn_dataset, model, metadata, privacy_dir):
 
     print("Train shadow models...")
-    # train_shadow_models(real_data, model_params, metadata, m_shadow_models, model, privacy_dir)
+    train_shadow_models(real_data, model_params, metadata, m_shadow_models, model, privacy_dir)
     print("Shadow models trained.")
 
     cat_features = metadata['cat_features']

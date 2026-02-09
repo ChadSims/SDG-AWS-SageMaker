@@ -9,7 +9,6 @@ import torch
 import wandb
 
 from lib.evaluation import cal_fidelity
-# from lib.info import N_TRIALS_SYNTHESISERS, STORAGE
 
 N_TRIALS_SYNTHESISERS = int(os.getenv("N_TRIALS_SYNTHESISERS", 50))
 STORAGE = os.getenv("STORAGE", "sqlite:////opt/ml/output/data/optuna_study.db")

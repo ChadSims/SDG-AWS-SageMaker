@@ -70,7 +70,7 @@ def tune(train_data: pd.DataFrame, val_data: pd.DataFrame, study_name: str, stor
         # model_params["batch_size"] = trial.suggest_categorical("batch_size", [40, 80, 160, 320, 500])
         # model_params["epochs"] = trial.suggest_int("epochs", 100, 500)
 
-        model_params["batch_size"] = 500
+        model_params["batch_size"] = 500 # affects runtime more than fidelity -> higher batch size is better
         model_params["epochs"] = 250  # Fixed for tuning, can be adjusted later
         model_params["embedding_dim"] = 128
         model_params["generator_dim"] = [128, 128]

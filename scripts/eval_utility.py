@@ -94,12 +94,12 @@ def classifier_utility(data: dict, dataset: str,  params_path: str, random_state
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True, help='The name of the dataset (without extension).')
-    parser.add_argument('--model', type=str, help='Name of the model (synthesiser) used to generate the synthetic data. Only required when tuning evaluators on a synthetic dataset.')
-    parser.add_argument('--random_state', type=int, default=42, help='Random state for reproducibility.')
+    parser.add_argument('--model', type=str, default=None, help='Name of the model (synthesiser) used to generate the synthetic data. Only required when tuning evaluators on a synthetic dataset.')
 
     args = parser.parse_args()
 
     dataset = args.dataset
+    model = args.model
     
     metadata_path = os.path.join(DATASETS_PATH, f"{dataset}/metadata.toml")
 
@@ -111,6 +111,7 @@ def main():
     task = metadata['task']
     num_features = metadata['num_features']
     cat_features = metadata['cat_features']
+    random_state = metadata['random_state']
 
     train, val, test = load_dataset(dataset)
 
@@ -122,9 +123,9 @@ def main():
     y_test = test[target_column]
 
 
-    if args.model:
+    if model:
         # If a model is specified, we assume this is a synthetic dataset
-        model = args.model
+        
         synthetic_dataset_path = os.path.join(EXP_PATH, f'{dataset}/{model}/sample.csv')
 
         if not os.path.exists(synthetic_dataset_path):
@@ -146,11 +147,11 @@ def main():
         S_y_train = df[target_column]
 
         # Transform the synthetic data, transformers fit on synthetic data, real test data is only transformed. val data is used as placeholder but discarded
-        X_train, _, X_test, y_train, _, y_test = transform(S_X_train, X_val, X_test, S_y_train, y_val, y_test, num_features, cat_features, task)
+        S_X_train, _, X_test, S_y_train, _, y_test = transform(S_X_train, X_val, X_test, S_y_train, y_val, y_test, num_features, cat_features, task)
             
         data = {
-            "X_train": X_train,
-            "y_train": y_train,
+            "X_train": S_X_train,
+            "y_train": S_y_train,
             "X_test": X_test,
             "y_test": y_test,
         }   
@@ -206,9 +207,9 @@ def main():
 
 
     if task == 'regression':
-        utility_results = regressor_utility(data, dataset, params_path, random_state=args.random_state)
+        utility_results = regressor_utility(data, dataset, params_path, random_state=random_state)
     elif task == 'classification':
-        utility_results = classifier_utility(data, dataset, params_path, random_state=args.random_state)
+        utility_results = classifier_utility(data, dataset, params_path, random_state=random_state)
 
 
     dump_json(utility_results, results_path)

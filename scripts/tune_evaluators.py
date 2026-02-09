@@ -11,7 +11,6 @@ import wandb
 from lib.evaluators import tune_ridge, tune_svr, tune_rfr, tune_mlpr, tune_logistic, tune_svc, tune_rfc, tune_mlpc
 from lib.preprocess import clean, split, transform, preprocess
 from lib.utils import load_config, load_dataset, dump_config
-# from lib.info import DATASETS_PATH, EXP_PATH, PARAMS_PATH
 
 DATASETS_PATH = os.getenv("DATASETS_PATH", "/opt/ml/input/data/datasets")
 PARAMS_PATH = os.getenv("PARAMS_PATH", "/opt/ml/output/data/params")
@@ -74,13 +73,11 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True, help='The name of the dataset (without extension).')
     parser.add_argument('--model', type=str, default=None, help='Name of the model (synthesiser) used to generate the synthetic data. Only required when tuning evaluators on a synthetic dataset.')
-    parser.add_argument('--random_state', type=int, default=42, help='Random state for reproducibility.')
 
     args = parser.parse_args()
 
     dataset = args.dataset
     model = args.model
-    random_state = args.random_state
 
     metadata_path = os.path.join(DATASETS_PATH, f"{dataset}/metadata.toml")
 
@@ -92,6 +89,8 @@ def main():
     target_column = metadata['target_column']
     num_features = metadata['num_features']
     cat_features = metadata['cat_features']
+    random_state = metadata['random_state']
+    test_size = metadata['test_size']
 
     if model:
         # If a model is specified, we assume this is a synthetic dataset
@@ -110,7 +109,7 @@ def main():
                 raise FileNotFoundError(f"Synthetic dataset file not found at {synthetic_dataset_path}. Please generate the synthetic dataset first or move it to input/data/exp/dataset/model/sample.csv.")
         
         df = pd.read_csv(synthetic_dataset_path)
-        X_train, X_val, X_test, y_train, y_val, y_test = preprocess(df, metadata=metadata)
+        X_train, X_val, X_test, y_train, y_val, y_test = preprocess(df, metadata=metadata, test_size=test_size, random_state=random_state)
         # synthetic data can be concat before transform - currently val not taken into account when transformed
         if isinstance(X_train, pd.DataFrame):
             X_train = pd.concat([X_train, X_val], axis=0, ignore_index=True)
@@ -130,6 +129,7 @@ def main():
         os.makedirs(params_path, exist_ok=True)   
 
     else:
+        # If no model is specified, we assume this is the real dataset
         train, val, test = load_dataset(dataset)
 
         X_train = train.drop(columns=[target_column])

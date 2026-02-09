@@ -6,8 +6,6 @@ import tomli
 import tomli_w
 from typing import Any, Union
 
-# from lib.info import DATASETS_PATH
-
 DATASETS_PATH = os.getenv("DATASETS_PATH", "/opt/ml/input/data/datasets")
 
 

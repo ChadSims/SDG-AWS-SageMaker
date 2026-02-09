@@ -5,11 +5,9 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 from lib.preprocess import clean, split
-from lib.utils import load_config
-# from lib.info import DATASETS_PATH
+from lib.utils import load_config, dump_config
 
 DATASETS_PATH = os.getenv("DATASETS_PATH", "/opt/ml/input/data/datasets")
-
 
 def main():
     parser = argparse.ArgumentParser(description="Split dataset into train, validation, and test sets.")
@@ -38,6 +36,11 @@ def main():
     metadata = load_config(metadata_path)
     target_column = metadata['target_column']
     task = metadata['task']
+
+    metadata['test_size'] = test_size
+    metadata['random_state'] = random_state
+
+    dump_config(metadata, metadata_path)
 
     df.dropna(inplace=True)
     df.drop_duplicates(inplace=True)

@@ -3,12 +3,10 @@ import logging
 import os 
 import sys
 import pandas as pd
-import pprint
 
 from lib.evaluation import cal_fidelity
 from lib.preprocess import clean
-from lib.utils import load_config, dump_config, dump_json, load_dataset
-# from lib.info import DATASETS_PATH, EXP_PATH
+from lib.utils import dump_json
 
 DATASETS_PATH = os.getenv("DATASETS_PATH", "/opt/ml/input/data/datasets")
 EXP_PATH = os.getenv("EXP_PATH", "/opt/ml/output/data/exp")
@@ -23,7 +21,6 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True, help='Name of the real dataset to evaluate.')
     parser.add_argument('--model', type=str, required=True, help='Name of the model used to generate the synthetic dataset.')
-    parser.add_argument('--verbose', action='store_true', help='If set, print additional information during evaluation.')
 
     args = parser.parse_args()
 
@@ -65,10 +62,6 @@ def main():
     os.makedirs(os.path.dirname(results_path), exist_ok=True)
 
     dump_json({'wasserstein_gower': fidelity_score}, results_path)
-
-    if args.verbose:
-        print(f"Evaluating fidelity for dataset: {dataset} using model: {model}")
-        pprint.pprint({'wasserstein_gower': fidelity_score})
 
 
 if __name__ == "__main__":

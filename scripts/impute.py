@@ -7,7 +7,6 @@ from sklearn.model_selection import train_test_split
 
 from lib.imputer import impute
 from lib.utils import load_dataset, load_config, dump_config
-# from lib.info import DATASETS_PATH
 
 DATASETS_PATH = os.getenv("DATASETS_PATH", "/opt/ml/input/data/datasets")
 
@@ -33,6 +32,7 @@ def main():
     metadata = load_config(metadata_path)
     target_column = metadata['target_column']
     task = metadata['task']
+    random_state = metadata['random_state']
 
     df = pd.read_csv(dataset_path)
 
@@ -62,10 +62,10 @@ def main():
     y = imputed_data[target_column]
 
     if task == 'regression':
-        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=42)
+        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, random_state=random_state)
 
     else: # classification
-        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, stratify=y, random_state=42)
+        X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.2, stratify=y, random_state=random_state)
 
     train = pd.concat([X_train, y_train], axis=1)
     val = pd.concat([X_val, y_val], axis=1)

@@ -19,13 +19,14 @@ wandb==0.19.0
 optuna-integration[wandb]
 miceforest==6.0.3
 
-# required to run container on aws/ in local environment 
+# # required to run container on aws/ in local environment 
 # sagemaker==2.247.1
 # sagemaker-core==1.0.42
 # ipykernel==6.29.5
 # ipywidgets
 # dotenv
 
-# required for analysis
+# # required for analysis
 # matplotlib
 # seaborn
+# optuna-dashboard

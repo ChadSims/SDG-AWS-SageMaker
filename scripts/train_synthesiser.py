@@ -54,8 +54,6 @@ def main():
 
     train_val = pd.concat([train, val], axis=0, ignore_index=True)
 
-    # normalise ?
-
     if model == 'binary_diffusion':
 
         metadata_path = os.path.join(DATASETS_PATH, f"{dataset}/metadata.toml")

@@ -6,7 +6,6 @@ import pandas as pd
 from lib.preprocess import clean
 from lib.plotting import plot_feature_distribution_comparison_multiple
 from lib.utils import load_config, load_dataset
-# from lib.info import DATASETS_PATH, EXP_PATH
 
 DATASETS_PATH = os.getenv("DATASETS_PATH", "/opt/ml/input/data/datasets")
 EXP_PATH = os.getenv("EXP_PATH", "/opt/ml/output/data/exp")
@@ -51,9 +50,6 @@ def main():
         raise ValueError("Real and synthetic datasets must have the same column names.")
     
     plot_feature_distribution_comparison_multiple(synthetic_datasets, models)
-
-
-
 
 
 if __name__ == "__main__":

@@ -29,7 +29,6 @@ from synthesisers.binary_diffusion_tabular import (
 
 from lib.evaluation import cal_fidelity
 from lib.preprocess import clean
-# from lib.info import BD_TRIALS, BD_TRAIN_STEPS, BD_TUNE_STEPS, STORAGE
 
 BD_TRIALS = int(os.getenv("BD_TRIALS", 20))  # Number of trials for Binary Diffusion when tuned sequentially
 BD_TRAIN_STEPS = int(os.getenv("BD_TRAIN_STEPS", 200000))  # Number of training steps for Binary Diffusion

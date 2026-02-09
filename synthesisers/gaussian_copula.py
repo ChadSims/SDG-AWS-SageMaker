@@ -7,7 +7,6 @@ from sdv.single_table import GaussianCopulaSynthesizer
 import torch
 
 from lib.evaluation import cal_fidelity
-# from lib.info import N_TRIALS_SYNTHESISERS, STORAGE
 
 N_TRIALS_SYNTHESISERS = int(os.getenv("N_TRIALS_SYNTHESISERS", 50))
 STORAGE = os.getenv("STORAGE", "sqlite:////opt/ml/output/data/optuna_study.db")
@@ -52,7 +51,7 @@ def tune(train_data: pd.DataFrame, val_data: pd.DataFrame, study_name: str, stor
         for col in num_features:
             model_params["numerical_distributions"][col] = trial.suggest_categorical(
                 f"numerical_distribution_{col}",
-                ["norm", "truncnorm", "uniform", "gamma", "gaussian_kde"] # , "beta" beta excluded cause it caused issues
+                ["norm", "truncnorm", "uniform", "gamma"] # "beta" and "gaussian_kde" removed: "beta" can fail sometimes, "gaussian_kde" slows optimisation significantly
             )
 
         trial.set_user_attr("best_params", model_params)

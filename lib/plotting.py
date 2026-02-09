@@ -135,4 +135,3 @@ def optuna_timeline_plot(trials_df):
     )
 
     return timeline_plot
-

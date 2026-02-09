@@ -15,7 +15,7 @@ import pandas as pd
 import wandb
 
 from lib.evaluation import cal_fidelity
-from lib.plotting import optuna_timeline_plot
+# from lib.plotting import optuna_timeline_plot
 from lib.preprocess import clean
 from lib.utils import load_config, dump_config, load_dataset
 from synthesisers.ctgan import train as ctgan_train
@@ -120,7 +120,7 @@ def gaussian_copula_objective(trial, data: pd.DataFrame, num_features: list):
         for col in num_features:
             model_params["numerical_distributions"][col] = trial.suggest_categorical(
                 f"numerical_distribution_{col}",
-                ["norm", "truncnorm", "uniform", "gamma"] # , "beta" beta excluded cause it caused issues "gaussian_kde"
+                ["norm", "truncnorm", "uniform", "gamma"] # "beta" and "gaussian_kde" removed: "beta" can fail sometimes, "gaussian_kde" slows optimisation significantly
             )
 
         trial.set_user_attr("best_params", model_params)
@@ -154,7 +154,7 @@ def copula_gan_objective(trial, data: pd.DataFrame, num_features: list):
     for col in num_features:
         model_params["numerical_distributions"][col] = trial.suggest_categorical(
             f"numerical_distribution_{col}",
-            ["norm", "truncnorm", "uniform", "gamma", "gaussian_kde"] # , "beta" beta excluded cause it caused issues
+            ["norm", "truncnorm", "uniform", "gamma"] # "beta" and "gaussian_kde" removed: "beta" can fail sometimes, "gaussian_kde" slows optimisation significantly
         )
 
     trial.set_user_attr("best_params", model_params)
@@ -278,7 +278,7 @@ def tune_model_parallel(model_type: str, data: pd.DataFrame, metadata: dict, stu
         ))
 
     with ProcessPoolExecutor(max_workers=N_WORKERS) as executor:
-        executor.map(optuna_worker,  *zip(*worker_args)) 
+        executor.map(optuna_worker, *zip(*worker_args)) 
 
     study = optuna.load_study(
         study_name=project_name,
@@ -313,7 +313,6 @@ def tune_model_parallel(model_type: str, data: pd.DataFrame, metadata: dict, stu
 
 
 if __name__ == "__main__":
-
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, required=True, help='The name of the dataset (without extension).')
     parser.add_argument('--model', type=str, required=True, help='Name of the model (synthesiser) to tune.')
@@ -338,9 +337,5 @@ if __name__ == "__main__":
     # save parameters
     params_path = os.path.join(PARAMS_PATH, f'synthesisers/{model}/{dataset}.toml')
     os.makedirs(os.path.dirname(params_path), exist_ok=True)
+
     dump_config(best_params, params_path)
-
-
-
-
-

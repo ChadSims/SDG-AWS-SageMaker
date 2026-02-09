@@ -4,10 +4,8 @@ import pandas as pd
 from sdv.metadata import Metadata
 
 from lib.utils import dump_config
-# from lib.info import DATASETS_PATH
 
 DATASETS_PATH = os.getenv("DATASETS_PATH", "/opt/ml/input/data/datasets")
-
 
 def main():
     parser = argparse.ArgumentParser(description="Generate metadata from a DataFrame.")

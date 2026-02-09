@@ -82,7 +82,7 @@ def tune(train_data: pd.DataFrame, val_data: pd.DataFrame, study_name: str, stor
         for col in num_features:
             model_params["numerical_distributions"][col] = trial.suggest_categorical(
                 f"numerical_distribution_{col}",
-                ["norm", "truncnorm", "uniform", "gamma", "gaussian_kde"] # , "beta" beta excluded cause it caused issues
+                ["norm", "truncnorm", "uniform", "gamma"] # "beta" and "gaussian_kde" removed: "beta" can fail sometimes, "gaussian_kde" slows optimisation significantly
             )
 
         trial.set_user_attr("best_params", model_params)
