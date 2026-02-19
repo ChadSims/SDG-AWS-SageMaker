@@ -13,6 +13,16 @@ A robust Python architecture designed to generate high-quality synthetic tabular
 
 ![Pipeline Diagram](./docs/sdg_diagram.png)
 
+## Evaluation Metrics
+
+The pipeline automatically assess synthetic data quality across three pillars:
+
+1. **Fidelity:** Measures statistical similarity between real and synthetic data via the Wasserstein distance. For datasets with mixed data types, gowers distance is used as the ground cost matrix.
+
+2. **Utility:** Measures how synthetic data performs compared to real data on downstream ML tasks following the "Train-on-Synthetic, Test-on-Real" (TSTR) strategy. Four different ML evaluators are used for Regression or Classification. 
+
+3. **Privacy:** Measures empirical exposure risk via the Membership Disclosure Score (MDS).
+
 ## Quick Start (Local Execution)
 
 Get the pipeline running on your machine in minutes.
