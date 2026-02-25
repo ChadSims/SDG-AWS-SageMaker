@@ -159,6 +159,10 @@ To avoid recurring storage and compute charges, perform these steps after your e
     
 - **Empty S3:** Delete the `output/` folder in your S3 bucket if the data is no longer needed.
 
+### AWS Architecture Diagram
+
+![AWS Diagram](./docs/aws_diagram.png)
+
 ## Monitoring & Results
 
 ### Weights & Biases
