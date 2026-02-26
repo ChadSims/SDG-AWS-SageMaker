@@ -12,21 +12,22 @@ from functools import partial
 import numpy as np
 import pandas as pd
 import torch
-import wandb
-from tqdm.auto import tqdm
 from sdv.metadata import Metadata
-from sdv.single_table import GaussianCopulaSynthesizer
-from sdv.single_table import CopulaGANSynthesizer
+from sdv.single_table import CopulaGANSynthesizer, GaussianCopulaSynthesizer
+from tqdm.auto import tqdm
 
-from lib.eval_helper import normalize_data, nearest_neighbors
+import wandb
+from lib.eval_helper import nearest_neighbors, normalize_data
 from lib.preprocess import clean
 from lib.utils import dump_json, load_config
-from synthesisers.ctgan import init_model as ctgan_init
-from synthesisers.tvae import init_model as tvae_init
-from synthesisers.gaussian_copula import init_model as gaussian_copula_init
-from synthesisers.copula_gan import init_model as copula_gan_init
-from synthesisers.binary_diffusion import train as train_bdt
 from synthesisers.binary_diffusion import sample as sample_bdt
+from synthesisers.binary_diffusion import train as train_bdt
+from synthesisers.copula_gan import init_model as copula_gan_init
+from synthesisers.ctgan import init_model as ctgan_init
+from synthesisers.gaussian_copula import init_model as gaussian_copula_init
+from synthesisers.potnet import init_model as potnet_init
+from synthesisers.potnet_core import load_model as load_potnet_model
+from synthesisers.tvae import init_model as tvae_init
 
 # Environment Configuration
 DATASETS_PATH = os.getenv("DATASETS_PATH", "/opt/ml/input/data/datasets")
@@ -72,6 +73,8 @@ def train_model(shadow_data, model_params, model_name, shadow_dir):
         model_params.pop('numerical_distributions', None)
         model_params["default_distribution"] = "gamma"
         model = CopulaGANSynthesizer(metadata, **model_params)
+    elif model_name == "potnet":
+        model = potnet_init(model_params)
     else:
         raise ValueError(f"Unknown model: {model_name}")
 
@@ -83,7 +86,12 @@ def train_model(shadow_data, model_params, model_name, shadow_dir):
 
     # save the model
     os.makedirs(shadow_dir, exist_ok=True)
-    torch.save(model, os.path.join(shadow_dir, f"{model_name}.pt"))
+    if model_name != "potnet":
+        torch.save(model, os.path.join(shadow_dir, f"{model_name}.pt"))
+    else:
+        model_path = os.path.join(shadow_dir, "potnet.pt")
+        model.save(model_path=model_path)
+
     del model
     cleanup_resources()
 
@@ -93,14 +101,14 @@ def shadow_worker_task(args, real_data_ref, model_params, metadata, model_name, 
     shadow_id, member_indices = args
     cur_shadow_dir = os.path.join(privacy_dir, str(shadow_id))
     os.makedirs(cur_shadow_dir, exist_ok=True)
-    
+
     shadow_data_pd = real_data_ref.iloc[member_indices].reset_index(drop=True)
 
     try:
-        # train model 
+        # train model
         if model_name != "binary_diffusion":
             train_model(shadow_data_pd, model_params, model_name, cur_shadow_dir)
-        else: 
+        else:
             dataset_name = privacy_dir.split('/')[-3]
             project_name = f"{'local' if RUN_LOCAL else 'sagemaker'}-sdg-{model_name}-{dataset_name}-privacy"
             wandb.init(project=project_name, name=f'trial {shadow_id}', config=model_params, reinit=True)
@@ -110,7 +118,7 @@ def shadow_worker_task(args, real_data_ref, model_params, metadata, model_name, 
         # save member info
         with open(os.path.join(cur_shadow_dir, "member.pkl"), "wb") as f:
             pickle.dump(member_indices, f)
-    
+
     finally:
         cleanup_resources()
 
@@ -155,13 +163,16 @@ def compute_distances_worker(shadow_id, real_data, discrete_cols, n_syn_dataset,
     This function will be executed by each worker process.
     """
     cur_shadow_dir = os.path.join(privacy_dir, str(shadow_id))
-    
+
     # Pre-calculate sqrt(n_features) for normalization
     n_features = real_data.shape[1]
     norm_factor = np.sqrt(n_features)
 
     model = None
-    if model_name != "binary_diffusion":
+    if model_name == "potnet":
+        model_path = os.path.join(cur_shadow_dir, f"{model_name}.pt")
+        model = load_potnet_model(model_path)
+    elif model_name != "binary_diffusion":
         model = torch.load(os.path.join(cur_shadow_dir, f"{model_name}.pt"), map_location='cpu')
 
     # Result structure: {record_id: [distances_from_N_samples]}
@@ -170,12 +181,14 @@ def compute_distances_worker(shadow_id, real_data, discrete_cols, n_syn_dataset,
     try:
         for _ in range(n_syn_dataset):
 
-            if model_name != "binary_diffusion":
-                syn_data_pd = model.sample(len(real_data) // 2)
-            else:
+            if model_name == "potnet":
+                syn_data_pd = model.generate(len(real_data) // 2)
+            elif model_name == "binary_diffusion":
                 ckpt = os.path.join(cur_shadow_dir, "model-final-train.pt")
                 ckpt_transformation = os.path.join(cur_shadow_dir, "transformation.joblib")
-                syn_data_pd = sample_bdt(ckpt, ckpt_transformation, len(real_data) // 2) 
+                syn_data_pd = sample_bdt(ckpt, ckpt_transformation, len(real_data) // 2)
+            else:
+                syn_data_pd = model.sample(len(real_data) // 2)
 
             clean(syn_data_pd)
 
@@ -203,7 +216,7 @@ def compute_distances_worker(shadow_id, real_data, discrete_cols, n_syn_dataset,
             pickle.dump((in_dists, out_dists), f)
 
         return in_dists, out_dists
-    
+
     finally:
         del model
         cleanup_resources()
@@ -229,13 +242,15 @@ def compute_MDS_parallel(real_data, m_shadow_models, n_syn_dataset, model_name, 
         results = list(tqdm(
             executor.map(worker_fn, range(m_shadow_models)),
             total=m_shadow_models,
-            desc="Computing Distances"
+            desc="Computing Distances",
         ))
 
     # Aggregate results from all processes
     for s_id, (in_dists, out_dists) in enumerate(results):
-        for r_id, val in in_dists.items(): in_matrix[r_id, s_id] = val
-        for r_id, val in out_dists.items(): out_matrix[r_id, s_id] = val
+        for r_id, val in in_dists.items():
+            in_matrix[r_id, s_id] = val
+        for r_id, val in out_dists.items():
+            out_matrix[r_id, s_id] = val
 
     # get the DS for each record
     mean_in = np.nanmean(in_matrix, axis=1)

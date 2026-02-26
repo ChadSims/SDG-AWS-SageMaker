@@ -1,48 +1,61 @@
 import argparse
+import gc
 import logging
-import os 
+import multiprocessing
+import os
 import sys
-
 from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 
 import optuna
+import pandas as pd
+import torch
 from optuna.integration.wandb import WeightsAndBiasesCallback
 from optuna.storages import JournalStorage
 from optuna.storages.journal import JournalFileBackend
 
-import pandas as pd
-
 import wandb
-
 from lib.evaluation import cal_fidelity
+
 # from lib.plotting import optuna_timeline_plot
 from lib.preprocess import clean
-from lib.utils import load_config, dump_config, load_dataset
-from synthesisers.ctgan import train as ctgan_train
-from synthesisers.tvae import train as tvae_train
-from synthesisers.gaussian_copula import train as gaussian_copula_train
-from synthesisers.copula_gan import train as copula_gan_train
+from lib.utils import dump_config, load_config, load_dataset
 from synthesisers.binary_diffusion import train as binary_diffusion_train
+from synthesisers.copula_gan import train as copula_gan_train
+from synthesisers.ctgan import train as ctgan_train
+from synthesisers.gaussian_copula import train as gaussian_copula_train
+from synthesisers.potnet import train as potnet_train
+from synthesisers.tvae import train as tvae_train
 
 DATASETS_PATH = os.getenv("DATASETS_PATH", "/opt/ml/input/data/datasets")
 PARAMS_PATH = os.getenv("PARAMS_PATH", "/opt/ml/output/data/params")
 EXP_PATH = os.getenv("EXP_PATH", "/opt/ml/output/data/exp")
 
 JOURNAL_STORAGE = os.getenv("JOURNAL_STORAGE", "/opt/ml/output/data/journal.log")
-N_TRIALS_PER_WORKER = int(os.getenv("N_TRIALS_PER_WORKER", 25))
-N_WORKERS = int(os.getenv("N_WORKERS", 2))
-N_DATALOADERS = int(os.getenv("N_DATALOADERS", 2))
+N_TRIALS_PER_WORKER = int(os.getenv("N_TRIALS_PER_WORKER", str(25)))
+N_WORKERS = int(os.getenv("N_WORKERS", str(2)))
+N_DATALOADERS = int(os.getenv("N_DATALOADERS", str(2)))
 RUN_LOCAL = os.getenv("RUN_LOCAL", "false").lower() == "true"
 
 logging.basicConfig(level=logging.INFO,
-                    format='%(asctime)s - [Proc:%(process)d] - %(levelname)s - %(message)s',
+                    format="%(asctime)s - [Proc:%(process)d] - %(levelname)s - %(message)s",
                     handlers=[logging.StreamHandler(sys.stdout)])
 
 logger = logging.getLogger(__name__)
 
 wandb.login()
 
-def ctgan_objective(trial, data: pd.DataFrame):
+
+def cleanup_resources() -> None:
+    """Universal cleanup for both CPU and GPU memory."""
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+        torch.cuda.synchronize()
+        torch.cuda.ipc_collect()
+    gc.collect()
+
+
+def ctgan_objective(trial, data: pd.DataFrame) -> float:
 
     model_params = {}
     model_params["generator_lr"] = trial.suggest_float("generator_lr", 1e-5, 1e-3, log=True)
@@ -73,12 +86,12 @@ def ctgan_objective(trial, data: pd.DataFrame):
 
     fidelity_score = cal_fidelity(data, synthetic_data, tune=True)
 
-    wandb.log({'wasserstein': fidelity_score})
+    wandb.log({"wasserstein": fidelity_score})
 
     return fidelity_score
 
 
-def tvae_objective(trial, data: pd.DataFrame):
+def tvae_objective(trial, data: pd.DataFrame) -> float:
     model_params = {}
 
     model_params["l2scale"] = trial.suggest_float("l2scale", 1e-6, 1e-3, log=True)
@@ -96,7 +109,7 @@ def tvae_objective(trial, data: pd.DataFrame):
 
     synthetic_data, loss = tvae_train(data, model_params, None, tune=True)
 
-    multi_agg_loss_per_epoch = loss.groupby('Epoch')['Loss'].agg(['mean', 'min', 'max', 'std']).reset_index()
+    multi_agg_loss_per_epoch = loss.groupby("Epoch")["Loss"].agg(["mean", "min", "max", "std"]).reset_index()
     multi_agg_loss_per_epoch["trial"] = trial.number
 
     loss_table = wandb.Table(dataframe=multi_agg_loss_per_epoch)
@@ -108,12 +121,12 @@ def tvae_objective(trial, data: pd.DataFrame):
 
     fidelity_score = cal_fidelity(data, synthetic_data, tune=True)
 
-    wandb.log({'wasserstein': fidelity_score})
+    wandb.log({"wasserstein": fidelity_score})
 
     return fidelity_score
 
 
-def gaussian_copula_objective(trial, data: pd.DataFrame, num_features: list):
+def gaussian_copula_objective(trial, data: pd.DataFrame, num_features: list) -> float:
         model_params = {}
         model_params["numerical_distributions"] = {}
 
@@ -129,12 +142,12 @@ def gaussian_copula_objective(trial, data: pd.DataFrame, num_features: list):
 
         fidelity_score = cal_fidelity(data, synthetic_data, tune=True)
 
-        wandb.log({'wasserstein': fidelity_score})
+        wandb.log({"wasserstein": fidelity_score})
 
         return fidelity_score
 
 
-def copula_gan_objective(trial, data: pd.DataFrame, num_features: list):
+def copula_gan_objective(trial, data: pd.DataFrame, num_features: list) -> float:
     model_params = {}
     model_params["generator_lr"] = trial.suggest_float("generator_lr", 1e-5, 1e-3, log=True)
     model_params["discriminator_lr"] = trial.suggest_float("discriminator_lr", 1e-5, 1e-3, log=True)
@@ -172,12 +185,12 @@ def copula_gan_objective(trial, data: pd.DataFrame, num_features: list):
 
     fidelity_score = cal_fidelity(data, synthetic_data, tune=True)
 
-    wandb.log({'wasserstein': fidelity_score})
+    wandb.log({"wasserstein": fidelity_score})
 
     return fidelity_score
 
 
-def binary_diffusion_objective(trial, data: pd.DataFrame, metadata: dict, exp_path: str, worker_id: int):
+def binary_diffusion_objective(trial, data: pd.DataFrame, metadata: dict, exp_path: str, worker_id: int) -> float:
     model_params = {}
     model_params["lr"] = trial.suggest_float("lr", 1e-5, 1e-3, log=True)
     model_params["batch_size"] = trial.suggest_categorical("batch_size", [64, 128, 256, 512])
@@ -190,9 +203,40 @@ def binary_diffusion_objective(trial, data: pd.DataFrame, metadata: dict, exp_pa
 
     fidelity_score = cal_fidelity(data, synthetic_data, tune=True)
 
-    wandb.log({'wasserstein': fidelity_score})
+    wandb.log({"wasserstein": fidelity_score})
 
     return fidelity_score
+
+
+def potnet_objective(trial, data: pd.DataFrame, metadata: dict) -> float:
+    model_params = {}
+
+    model_params["embedding_dim"] = data.shape[1]
+
+    cat_features = metadata["cat_features"]
+    num_features = metadata["num_features"]
+    if metadata["task"] == "regression":
+        num_features.append(metadata["target_column"])
+    else:
+        cat_features.append(metadata["target_column"])
+    int_cols = [col for col in num_features if data[col][0].dtype == "int64"]
+    cont_col = [col for col in num_features if data[col][0].dtype == "float64"]
+    numeric_output_data_type = {"integer": int_cols, "continuous": cont_col}
+    model_params["numeric_output_data_type"] = numeric_output_data_type
+    model_params["categorical_cols"] = cat_features
+    model_params["epochs"] = 300
+
+    model_params["batch_size"] = trial.suggest_categorical(
+        "batch_size", [32, 64, 128, 256, 512]
+    )
+    model_params["lr"] = trial.suggest_float("lr", 1e-5, 1e-2, log=True)
+
+    trial.set_user_attr("best_params", model_params)
+
+    synth_sample = potnet_train(data, model_params, None, tune=True)
+    clean(synth_sample)
+
+    return cal_fidelity(data, synth_sample, tune=True)
 
 
 def optuna_worker(
@@ -202,29 +246,31 @@ def optuna_worker(
     metadata: dict,
     project_name: str,
     storage: str,
-    n_trials_per_worker,
-    exp_path: str
+    n_trials_per_worker: int,
+    exp_path: str,
 ):
-    logger.info(f"Worker {worker_id} started for model {model_type} with study {study_name}")
+    logger.info(f"Worker {worker_id} started for model {model_type} with study {project_name}")
 
     metric_name = "Wasserstein"
-    direction = 'minimize'
+    direction = "minimize"
 
-    if model_type == 'ctgan':
+    if model_type == "ctgan":
         objective_func = lambda trial: ctgan_objective(trial, data)
-    elif model_type == 'tvae':
+    elif model_type == "tvae":
         objective_func = lambda trial: tvae_objective(trial, data)
-    elif model_type == 'gaussian_copula':
-        num_features = metadata['num_features']
-        num_features.append(metadata['target_column']) if metadata['task'] == 'regression' else None
+    elif model_type == "gaussian_copula":
+        num_features = metadata["num_features"]
+        num_features.append(metadata["target_column"]) if metadata["task"] == "regression" else None
         objective_func = lambda trial: gaussian_copula_objective(trial, data, num_features)
-    elif model_type == 'copula_gan':
-        num_features = metadata['num_features']
-        num_features.append(metadata['target_column']) if metadata['task'] == 'regression' else None
+    elif model_type == "copula_gan":
+        num_features = metadata["num_features"]
+        num_features.append(metadata["target_column"]) if metadata["task"] == "regression" else None
         objective_func = lambda trial: copula_gan_objective(trial, data, num_features)
-    elif model_type == 'binary_diffusion':
+    elif model_type == "binary_diffusion":
         objective_func = lambda trial: binary_diffusion_objective(trial, data, metadata, exp_path, worker_id)
-
+    elif model_type == "potnet":
+        # objective_func = lambda trial: potnet_objective(trial, data, metadata)
+        objective_func = partial(potnet_objective, data=data, metadata=metadata)
 
     wandb_kwargs = {
         "project": project_name,
@@ -248,16 +294,16 @@ def optuna_worker(
         decorated_objective,
         n_trials=n_trials_per_worker,
         show_progress_bar=False,
-        callbacks=[wandbc]
+        callbacks=[wandbc],
     )
 
-    logger.info(f"Worker {worker_id} finished for model {model_type} with study {study_name}")
+    logger.info(f"Worker {worker_id} finished for model {model_type} with study {project_name}")
 
-def tune_model_parallel(model_type: str, data: pd.DataFrame, metadata: dict, study_name: str, exp_path: str):
+def tune_model_parallel(model_type: str, data: pd.DataFrame, metadata: dict, study_name: str, exp_path: str) -> dict:
 
     logger.info(f"Starting tuning for model {model_type} with study {study_name}")
 
-    project_name = f"local-sdg-synthesisers-{study_name}" if RUN_LOCAL else f"sagemaker-sdg-synthesisers-{study_name}"
+    project_name = f"{'local' if RUN_LOCAL else 'sagemaker'}-sdg-synthesisers-{study_name}"
 
     try:
         optuna.delete_study(study_name=project_name, storage=JournalStorage(JournalFileBackend(file_path=JOURNAL_STORAGE)))
@@ -278,11 +324,11 @@ def tune_model_parallel(model_type: str, data: pd.DataFrame, metadata: dict, stu
         ))
 
     with ProcessPoolExecutor(max_workers=N_WORKERS) as executor:
-        executor.map(optuna_worker, *zip(*worker_args)) 
+        list(executor.map(optuna_worker, *zip(*worker_args)))
 
     study = optuna.load_study(
         study_name=project_name,
-        storage=JournalStorage(JournalFileBackend(file_path=JOURNAL_STORAGE))
+        storage=JournalStorage(JournalFileBackend(file_path=JOURNAL_STORAGE)),
     )
 
     # objective_value = 'Wasserstein'
@@ -307,15 +353,14 @@ def tune_model_parallel(model_type: str, data: pd.DataFrame, metadata: dict, stu
     # })
     # run.finish()
 
-    best_params = study.best_trial.user_attrs["best_params"]
-
-    return best_params
+    return study.best_trial.user_attrs["best_params"]
 
 
 if __name__ == "__main__":
+    multiprocessing.set_start_method("spawn", force=True)
     parser = argparse.ArgumentParser()
-    parser.add_argument('--dataset', type=str, required=True, help='The name of the dataset (without extension).')
-    parser.add_argument('--model', type=str, required=True, help='Name of the model (synthesiser) to tune.')
+    parser.add_argument("--dataset", type=str, required=True, help="The name of the dataset (without extension).")
+    parser.add_argument("--model", type=str, required=True, help="Name of the model (synthesiser) to tune.")
 
     args = parser.parse_args()
 
@@ -326,16 +371,16 @@ if __name__ == "__main__":
     train_val = pd.concat([train, val], axis=0, ignore_index=True)
 
     metadata_path = os.path.join(DATASETS_PATH, f"{dataset}/metadata.toml")
-    if not os.path.exists(metadata_path):
-        raise FileNotFoundError(f"Metadata file not found at {metadata_path}. Please generate metadata first.")
     metadata = load_config(metadata_path)
 
     study_name = f"{model}-{dataset}"
-    exp_path = os.path.join(EXP_PATH, f'{dataset}/{model}')
+    exp_path = os.path.join(EXP_PATH, f"{dataset}/{model}")
     best_params = tune_model_parallel(model, train_val, metadata, study_name, exp_path)
 
     # save parameters
-    params_path = os.path.join(PARAMS_PATH, f'synthesisers/{model}/{dataset}.toml')
+    params_path = os.path.join(PARAMS_PATH, f"synthesisers/{model}/{dataset}.toml")
     os.makedirs(os.path.dirname(params_path), exist_ok=True)
 
     dump_config(best_params, params_path)
+
+    cleanup_resources()

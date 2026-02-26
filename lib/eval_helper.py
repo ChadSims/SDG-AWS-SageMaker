@@ -1,27 +1,32 @@
-from importlib import import_module
 import os
 import pickle
 import time
+from importlib import import_module
 
 import numpy as np
 import pandas as pd
-
-from sklearn.preprocessing import OneHotEncoder, StandardScaler, MinMaxScaler, QuantileTransformer
-from sklearn.neighbors import NearestNeighbors
-from sdv.metadata import Metadata
-from sdv.single_table import GaussianCopulaSynthesizer
-from sdv.single_table import CopulaGANSynthesizer
 import torch
+from sdv.metadata import Metadata
+from sdv.single_table import CopulaGANSynthesizer, GaussianCopulaSynthesizer
+from sklearn.neighbors import NearestNeighbors
+from sklearn.preprocessing import (
+    MinMaxScaler,
+    OneHotEncoder,
+    QuantileTransformer,
+    StandardScaler,
+)
 from tqdm import tqdm
-import wandb
 
+import wandb
 from lib.preprocess import clean
-from synthesisers.ctgan import init_model as ctgan_init
-from synthesisers.tvae import init_model as tvae_init
-from synthesisers.gaussian_copula import init_model as gaussian_copula_init
-from synthesisers.copula_gan import init_model as copula_gan_init
-from synthesisers.binary_diffusion import train as train_bdt
 from synthesisers.binary_diffusion import sample as sample_bdt
+from synthesisers.binary_diffusion import train as train_bdt
+from synthesisers.copula_gan import init_model as copula_gan_init
+from synthesisers.ctgan import init_model as ctgan_init
+from synthesisers.gaussian_copula import init_model as gaussian_copula_init
+from synthesisers.potnet import init_model as potnet_init
+from synthesisers.potnet_core import load_model as load_potnet_model
+from synthesisers.tvae import init_model as tvae_init
 
 RUN_LOCAL = os.getenv("RUN_LOCAL", "false").lower() == "true"
 
@@ -41,12 +46,20 @@ def train_model(shadow_data, model_params, model_name, shadow_dir):
         # model = copula_gan_init(metadata, model_params)
         model_params.pop('numerical_distributions', None)
         model = CopulaGANSynthesizer(metadata, **model_params)
+    elif model_name == "potnet":
+        model = potnet_init(model_params)
+    else:
+        raise ValueError(f"Unknown model: {model_name}")
 
     model.fit(shadow_data)
 
     # save the model
     os.makedirs(shadow_dir, exist_ok=True)
-    torch.save(model, os.path.join(shadow_dir, f"{model_name}.pt"))
+    if model_name != "potnet":
+        torch.save(model, os.path.join(shadow_dir, f"{model_name}.pt"))
+    else:
+        model_path = os.path.join(shadow_dir, "potnet.pt")
+        model.save(model_path=model_path)
 
 
 def train_shadow_models(real_data, model_params, metadata, m_shadow_models, model, privacy_dir):
@@ -76,7 +89,7 @@ def train_shadow_models(real_data, model_params, metadata, m_shadow_models, mode
         # train model 
         if model != "binary_diffusion":
             train_model(shadow_data_pd, model_params, model, cur_shadow_dir)
-        else: 
+        else:
             dataset = privacy_dir.split('/')[-3]
             project_name = f"local-sdg-synthesisers-{model}-{dataset}-privacy" if RUN_LOCAL else f"sagemaker-sdg-synthesisers-{model}-{dataset}-privacy"
             wandb.init(project=project_name, name=f'trial {shadow_id}', config=model_params)
@@ -192,21 +205,28 @@ def compute_MDS(real_data, m_shadow_models, n_syn_dataset, model_name, cat_featu
         cur_shadow_dir = os.path.join(privacy_dir, str(shadow_id))
         cur_shadow_dist = {}
 
-        if model_name != "binary_diffusion":
+        if model_name == "potnet":
+            model_path = os.path.join(cur_shadow_dir, f"{model_name}.pt")
+            model = load_potnet_model(model_path)
+        elif model_name != "binary_diffusion":
             model = torch.load(os.path.join(cur_shadow_dir, f"{model_name}.pt"))
 
         for id in range(n_syn_dataset):
 
-            if model_name != "binary_diffusion":
-                # start_time = time.time()
-                syn_data_pd = model.sample(len(real_data) // 2)
-                # print(f"Sampling took {time.time() - start_time:.2f} seconds for shadow model {shadow_id}, dataset {id}.")
-            else:
+            if model_name == "potnet":
+
+                syn_data_pd = model.generate(len(real_data) // 2)
+
+            elif model_name == "binary_diffusion":
                 # syn_data_pd = pd.read_csv(os.path.join(cur_shadow_dir, "sample.csv"))
                 ckpt = os.path.join(cur_shadow_dir, "model-final-train.pt")
                 ckpt_transformation = os.path.join(cur_shadow_dir, "transformation.joblib")
                 # start_time = time.time()
                 syn_data_pd = sample_bdt(ckpt, ckpt_transformation, len(real_data) // 2)
+                # print(f"Sampling took {time.time() - start_time:.2f} seconds for shadow model {shadow_id}, dataset {id}.")
+            else:
+                # start_time = time.time()
+                syn_data_pd = model.sample(len(real_data) // 2)
                 # print(f"Sampling took {time.time() - start_time:.2f} seconds for shadow model {shadow_id}, dataset {id}.")
 
             clean(syn_data_pd)
@@ -214,7 +234,7 @@ def compute_MDS(real_data, m_shadow_models, n_syn_dataset, model_name, cat_featu
             raw_data_arr, syn_data_arr, n_features = normalize_data(real_data, syn_data_pd, cat_features)
 
             distances = nearest_neighbors(syn_data_arr, raw_data_arr)
-        
+
             for i, dist in enumerate(distances):
                 normalized_dist = dist[0] / np.sqrt(n_features)
                 if i not in cur_shadow_dist:

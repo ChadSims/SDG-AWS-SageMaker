@@ -4,7 +4,7 @@ A robust Python architecture designed to generate high-quality synthetic tabular
 
 ## Features
 
-* **Multi-Model Support:** Easily switch between CTGAN, Binary Diffusion, and other models.
+* **Multi-Model Support:** Easily switch models: CTGAN, TVAE, Gaussian Copula, Copula GAN, Binary Diffusion, and POTNet.
 * **Evaluation Suite:** Automatically compares synthetic data against real datasets.
 * **Scalable Architecture:** Run lightweight experiments locally or scale to the cloud using AWS SageMaker and Docker.
 * **Experiment Tracking:** Built-in integration with Weights & Biases and Optuna.
@@ -205,3 +205,5 @@ optuna-dashboard ./path/to/journal.log
 - [SDV (Synthetic Data Vault)](https://datacebo.com/sdv-dev/)
 
 - [Binary Diffusion Tabular](https://github.com/vkinakh/binary-diffusion-tabular)
+
+- [POTNet](https://github.com/sophial05/POTNet)
