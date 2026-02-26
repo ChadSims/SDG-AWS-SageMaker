@@ -1,11 +1,11 @@
 # required inside container/ for pipeline
 accelerate==1.1.1
-dotenv
+dotenv==0.9.9
 ema-pytorch==0.7.6
 geomloss==0.2.6
 gower==0.1.2
 optuna==4.3.0
-pandas
+pandas==2.3.1
 POT==0.9.5
 PyYAML==6.0.2
 scikit-learn==1.5.2
@@ -16,7 +16,7 @@ tomli_w==1.2.0
 torchmetrics==1.6.0
 tqdm==4.67.1
 wandb==0.19.0
-optuna-integration[wandb]
+optuna-integration[wandb]==4.4.0
 miceforest==6.0.3
 
 # # required to run container on aws/ in local environment 
@@ -30,3 +30,9 @@ miceforest==6.0.3
 # matplotlib
 # seaborn
 # optuna-dashboard
+
+# potential potnet dependencies conflicts
+# scipy == 1.13.1
+# matplotlib
+# torch == 2.4.1
+# pot == 0.9.3

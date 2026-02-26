@@ -6,14 +6,14 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "accelerate==1.1.1",
-    "dotenv>=0.9.9",
+    "dotenv==0.9.9",
     "ema-pytorch==0.7.6",
     "geomloss==0.2.6",
     "gower==0.1.2",
     "miceforest==6.0.3",
     "optuna==4.3.0",
-    "optuna-integration[wandb]>=4.7.0",
-    "pandas>=2.3.3",
+    "optuna-integration[wandb]==4.4.0",
+    "pandas==2.3.1",
     "pot==0.9.5",
     "pyyaml==6.0.2",
     "scikit-learn==1.5.2",
